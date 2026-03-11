@@ -19,9 +19,16 @@ function formatTime(ms: number): string {
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
   if (ms < 3_600_000) return `${(ms / 60_000).toFixed(1)}min`;
   if (ms < 86_400_000) return `${(ms / 3_600_000).toFixed(1)}h`;
-  if (ms < 31_536_000_000) return `${(ms / 86_400_000).toFixed(0)} dias`;
+  if (ms < 31_536_000_000) {
+    const days = ms / 86_400_000;
+    const d = days < 10 ? days.toFixed(1) : Math.round(days).toString();
+    return `${d} ${days < 1.05 ? 'dia' : 'dias'}`;
+  }
   const years = ms / 31_536_000_000;
-  if (years < 1_000) return `${years.toFixed(0)} anos`;
+  if (years < 1_000) {
+    const y = years < 10 ? years.toFixed(1) : Math.round(years).toString();
+    return `${y} ${years < 1.05 ? 'ano' : 'anos'}`;
+  }
   if (years < 1_000_000) return `${(years / 1e3).toFixed(1)} mil anos`;
   if (years < 1e9) return `${(years / 1e6).toFixed(1)} milhões de anos`;
   if (years < 1e12) return `${(years / 1e9).toFixed(1)} bilhões de anos`;
