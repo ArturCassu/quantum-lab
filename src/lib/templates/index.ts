@@ -1,3 +1,9 @@
+export interface BenchmarkPoint {
+  label: string;
+  classicalMs: number;
+  quantumMs: number;
+}
+
 export interface Template {
   id: string;
   title: string;
@@ -12,6 +18,7 @@ export interface Template {
   explanation: string;
   inputDescription: string;
   tags: string[];
+  benchmarks: BenchmarkPoint[];
 }
 
 export const TEMPLATES: Template[] = [
@@ -209,6 +216,14 @@ if __name__ == "__main__":
     inputDescription:
       "Um número inteiro composto N para ser decomposto em fatores primos (ex: 15, 21, 35).",
     tags: ["cryptography", "factoring", "shor"],
+    benchmarks: [
+      { label: "8 bits", classicalMs: 0.02, quantumMs: 0.8 },
+      { label: "16 bits", classicalMs: 2, quantumMs: 1.5 },
+      { label: "32 bits", classicalMs: 800, quantumMs: 3 },
+      { label: "64 bits", classicalMs: 120_000, quantumMs: 8 },
+      { label: "128 bits", classicalMs: 9_500_000, quantumMs: 18 },
+      { label: "256 bits", classicalMs: 950_000_000, quantumMs: 35 },
+    ],
   },
 
   // ─── 2. Database Search ──────────────────────────────────────────────
@@ -395,6 +410,14 @@ if __name__ == "__main__":
     inputDescription:
       "Uma lista não-ordenada de N itens e um valor-alvo para buscar (ex: 16 itens, buscar o 11).",
     tags: ["search", "grover", "database"],
+    benchmarks: [
+      { label: "10³", classicalMs: 0.5, quantumMs: 0.4 },
+      { label: "10⁶", classicalMs: 500, quantumMs: 12 },
+      { label: "10⁹", classicalMs: 500_000, quantumMs: 380 },
+      { label: "10¹²", classicalMs: 500_000_000, quantumMs: 12_000 },
+      { label: "10¹⁵", classicalMs: 500_000_000_000, quantumMs: 380_000 },
+      { label: "10¹⁸", classicalMs: 500_000_000_000_000, quantumMs: 12_000_000 },
+    ],
   },
 
   // ─── 3. Optimization — MaxCut ────────────────────────────────────────
@@ -614,6 +637,14 @@ if __name__ == "__main__":
     inputDescription:
       "Um grafo definido por lista de arestas e número de nós (ex: 5 nós, 7 arestas).",
     tags: ["optimization", "qaoa", "graph"],
+    benchmarks: [
+      { label: "5 nós", classicalMs: 0.01, quantumMs: 0.5 },
+      { label: "10 nós", classicalMs: 5, quantumMs: 1.2 },
+      { label: "20 nós", classicalMs: 5_000, quantumMs: 4 },
+      { label: "30 nós", classicalMs: 5_000_000, quantumMs: 12 },
+      { label: "40 nós", classicalMs: 5_000_000_000, quantumMs: 35 },
+      { label: "50 nós", classicalMs: 5_000_000_000_000, quantumMs: 100 },
+    ],
   },
 
   // ─── 4. Random Number Generation ─────────────────────────────────────
@@ -826,5 +857,13 @@ if __name__ == "__main__":
     inputDescription:
       "Quantidade de bits/bytes aleatórios a gerar e opcionalmente um range (ex: inteiro entre 1 e 100).",
     tags: ["random", "entropy", "basics"],
+    benchmarks: [
+      { label: "8 bits", classicalMs: 0.001, quantumMs: 0.5 },
+      { label: "64 bits", classicalMs: 0.002, quantumMs: 2 },
+      { label: "256 bits", classicalMs: 0.005, quantumMs: 6 },
+      { label: "1024 bits", classicalMs: 0.01, quantumMs: 20 },
+      { label: "4096 bits", classicalMs: 0.02, quantumMs: 75 },
+      { label: "∞ (entropia)", classicalMs: 0.03, quantumMs: 0.03 },
+    ],
   },
 ];

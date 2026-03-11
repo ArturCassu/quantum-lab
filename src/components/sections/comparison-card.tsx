@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import type { Template } from '@/lib/templates';
 import { CodeBlock } from '@/components/ui/code-block';
 import { ComplexityBadge } from '@/components/ui/complexity-badge';
+import { BenchmarkChart } from '@/components/ui/benchmark-chart';
 
 interface ComparisonCardProps {
   template: Template;
@@ -127,6 +128,14 @@ export function ComparisonCard({ template }: ComparisonCardProps) {
           </button>
         </div>
       )}
+
+      {/* Benchmark Simulation */}
+      <div className="px-6 pt-4">
+        <BenchmarkChart
+          benchmarks={template.benchmarks}
+          templateId={template.id}
+        />
+      </div>
 
       {/* Explanation */}
       <div className="px-6 pt-4">

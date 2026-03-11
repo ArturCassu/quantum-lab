@@ -1,3 +1,4 @@
+export { BenchmarkChart } from './benchmark-chart';
 export { CodeBlock } from './code-block';
 export { ComplexityBadge } from './complexity-badge';
 export { Button } from './button';
