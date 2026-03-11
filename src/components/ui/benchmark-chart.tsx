@@ -2,20 +2,15 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { BenchmarkPoint } from '@/lib/templates';
+import { ScaleModal } from './scale-modal';
 
 interface BenchmarkChartProps {
   benchmarks: BenchmarkPoint[];
   templateId: string;
+  templateTitle: string;
 }
 
 type SimulationState = 'idle' | 'running' | 'done';
-
-interface AnimatedBar {
-  targetWidth: number;
-  currentWidth: number;
-  label: string;
-  value: number;
-}
 
 function formatTime(ms: number): string {
   if (ms < 1) return `${(ms * 1000).toFixed(0)}μs`;
@@ -41,10 +36,11 @@ function getSpeedupLabel(classical: number, quantum: number): string {
   return `${(ratio / 1e12).toFixed(1)}T×`;
 }
 
-export function BenchmarkChart({ benchmarks, templateId }: BenchmarkChartProps) {
+export function BenchmarkChart({ benchmarks, templateId, templateTitle }: BenchmarkChartProps) {
   const [state, setState] = useState<SimulationState>('idle');
   const [activeStep, setActiveStep] = useState(-1);
   const [barWidths, setBarWidths] = useState<number[]>([]);
+  const [scalePoint, setScalePoint] = useState<BenchmarkPoint | null>(null);
   const animationRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
 
@@ -72,8 +68,8 @@ export function BenchmarkChart({ benchmarks, templateId }: BenchmarkChartProps) 
 
       setActiveStep(step);
 
-      // Calculate bar widths: normalize to max value across ALL benchmarks using log scale
-      const allValues = benchmarks.slice(0, step + 1).flatMap((b) => [
+      // Use ALL benchmarks for consistent scale from frame 1
+      const allValues = benchmarks.flatMap((b) => [
         Math.log10(Math.max(b.classicalMs, 0.001)),
         Math.log10(Math.max(b.quantumMs, 0.001)),
       ]);
@@ -124,10 +120,7 @@ export function BenchmarkChart({ benchmarks, templateId }: BenchmarkChartProps) 
                 : 'linear-gradient(135deg, var(--classical) 0%, var(--quantum) 100%)',
             color: state === 'done' ? 'var(--text-muted)' : '#fff',
             border: '1px solid',
-            borderColor:
-              state === 'done'
-                ? 'var(--border)'
-                : 'transparent',
+            borderColor: state === 'done' ? 'var(--border)' : 'transparent',
           }}
         >
           {state === 'idle' && (
@@ -188,6 +181,8 @@ export function BenchmarkChart({ benchmarks, templateId }: BenchmarkChartProps) 
             const quantumWidth = barWidths[idx * 2 + 1] ?? 0;
             const isActive = idx === activeStep;
             const speedup = getSpeedupLabel(point.classicalMs, point.quantumMs);
+            const ratio = point.classicalMs / point.quantumMs;
+            const showScaleButton = ratio > 10;
 
             return (
               <div
@@ -203,17 +198,32 @@ export function BenchmarkChart({ benchmarks, templateId }: BenchmarkChartProps) 
                   <span className="text-xs font-mono text-[var(--text-muted)]">
                     n = {point.label}
                   </span>
-                  {point.classicalMs > point.quantumMs && (
-                    <span
-                      className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full"
-                      style={{
-                        color: 'var(--quantum)',
-                        background: 'rgba(124, 58, 237, 0.15)',
-                      }}
-                    >
-                      ⚡ {speedup} mais rápido
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {point.classicalMs > point.quantumMs && (
+                      <span
+                        className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full"
+                        style={{
+                          color: 'var(--quantum)',
+                          background: 'rgba(124, 58, 237, 0.15)',
+                        }}
+                      >
+                        ⚡ {speedup} mais rápido
+                      </span>
+                    )}
+                    {showScaleButton && (
+                      <button
+                        onClick={() => setScalePoint(point)}
+                        className="text-[10px] font-mono px-2 py-0.5 rounded-full cursor-pointer transition-colors hover:bg-white/10"
+                        style={{
+                          color: 'var(--accent)',
+                          border: '1px solid rgba(245, 158, 11, 0.3)',
+                        }}
+                        title="Ver diferença em escala real"
+                      >
+                        📏 Ver escala
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Classical bar */}
@@ -271,9 +281,7 @@ export function BenchmarkChart({ benchmarks, templateId }: BenchmarkChartProps) 
 
           {/* Summary when done */}
           {state === 'done' && benchmarks.length > 0 && (
-            <div
-              className="mt-3 pt-3 border-t border-[var(--border)] text-center"
-            >
+            <div className="mt-3 pt-3 border-t border-[var(--border)] flex items-center justify-center gap-4">
               <p className="text-xs text-[var(--text-muted)]">
                 No maior input ({benchmarks[benchmarks.length - 1].label}), o
                 algoritmo quântico é{' '}
@@ -288,9 +296,29 @@ export function BenchmarkChart({ benchmarks, templateId }: BenchmarkChartProps) 
                 </span>{' '}
                 mais rápido
               </p>
+              <button
+                onClick={() => setScalePoint(benchmarks[benchmarks.length - 1])}
+                className="text-[11px] font-medium px-3 py-1 rounded-lg cursor-pointer transition-all hover:brightness-110"
+                style={{
+                  background: 'rgba(245, 158, 11, 0.1)',
+                  color: 'var(--accent)',
+                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                }}
+              >
+                📏 Sentir a diferença
+              </button>
             </div>
           )}
         </div>
+      )}
+
+      {/* Scale modal */}
+      {scalePoint && (
+        <ScaleModal
+          point={scalePoint}
+          templateTitle={templateTitle}
+          onClose={() => setScalePoint(null)}
+        />
       )}
     </div>
   );
@@ -298,13 +326,7 @@ export function BenchmarkChart({ benchmarks, templateId }: BenchmarkChartProps) 
 
 function PlayIcon() {
   return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      xmlns="http://www.w3.org/2000/svg"
-    >
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
       <path d="M8 5.14v14.72a1 1 0 001.5.86l11.5-7.36a1 1 0 000-1.72L9.5 4.28A1 1 0 008 5.14z" />
     </svg>
   );
@@ -312,16 +334,7 @@ function PlayIcon() {
 
 function SpinnerIcon() {
   return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      xmlns="http://www.w3.org/2000/svg"
-      className="animate-spin"
-    >
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="animate-spin">
       <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
     </svg>
   );
@@ -329,15 +342,7 @@ function SpinnerIcon() {
 
 function ResetIcon() {
   return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      xmlns="http://www.w3.org/2000/svg"
-    >
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M1 4v6h6M23 20v-6h-6" />
       <path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15" />
     </svg>

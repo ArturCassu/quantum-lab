@@ -134,6 +134,7 @@ export function ComparisonCard({ template }: ComparisonCardProps) {
         <BenchmarkChart
           benchmarks={template.benchmarks}
           templateId={template.id}
+          templateTitle={template.title}
         />
       </div>
 
