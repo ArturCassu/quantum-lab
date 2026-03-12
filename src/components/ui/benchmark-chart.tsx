@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { BenchmarkPoint } from '@/lib/templates';
 import { ScaleModal } from './scale-modal';
 
@@ -24,7 +24,11 @@ function formatTime(ms: number): string {
     return `${d} ${days < 1.05 ? 'dia' : 'dias'}`;
   }
   const years = ms / 31_536_000_000;
-  if (years < 1_000_000) return `${years.toFixed(0)} anos`;
+  if (years < 1_000) {
+    const y = years < 10 ? years.toFixed(1) : Math.round(years).toString();
+    return `${y} ${years < 1.05 ? 'ano' : 'anos'}`;
+  }
+  if (years < 1_000_000) return `${(years / 1e3).toFixed(1)} mil anos`;
   if (years < 1e9) return `${(years / 1e6).toFixed(1)}M anos`;
   return `${(years / 1e9).toFixed(1)}B anos`;
 }
@@ -43,68 +47,51 @@ function getSpeedupLabel(classical: number, quantum: number): string {
 export function BenchmarkChart({ benchmarks, templateId, templateTitle }: BenchmarkChartProps) {
   const [state, setState] = useState<SimulationState>('idle');
   const [activeStep, setActiveStep] = useState(-1);
-  const [barWidths, setBarWidths] = useState<number[]>([]);
   const [scalePoint, setScalePoint] = useState<BenchmarkPoint | null>(null);
-  const animationRef = useRef<number | null>(null);
-  const mountedRef = useRef(true);
 
+  // Advance steps automatically when running
   useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
-    };
-  }, []);
+    if (state !== 'running') return;
+    if (activeStep >= benchmarks.length - 1) {
+      const timer = setTimeout(() => setState('done'), 400);
+      return () => clearTimeout(timer);
+    }
+    const timer = setTimeout(() => {
+      setActiveStep((s) => s + 1);
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [state, activeStep, benchmarks.length]);
+
+  // Calculate bar widths from activeStep
+  const barWidths = useMemo(() => {
+    if (activeStep < 0) return [];
+
+    const allValues = benchmarks.flatMap((b) => [
+      Math.log10(Math.max(b.classicalMs, 0.001)),
+      Math.log10(Math.max(b.quantumMs, 0.001)),
+    ]);
+    const maxLog = Math.max(...allValues);
+    const minLog = Math.min(...allValues);
+    const range = maxLog - minLog || 1;
+
+    return benchmarks.slice(0, activeStep + 1).flatMap((b) => {
+      const cLog = Math.log10(Math.max(b.classicalMs, 0.001));
+      const qLog = Math.log10(Math.max(b.quantumMs, 0.001));
+      return [
+        ((cLog - minLog) / range) * 85 + 15,
+        ((qLog - minLog) / range) * 85 + 15,
+      ];
+    });
+  }, [activeStep, benchmarks]);
 
   const runSimulation = useCallback(() => {
     setState('running');
-    setActiveStep(-1);
-    setBarWidths([]);
-
-    const totalSteps = benchmarks.length;
-    let step = 0;
-
-    const runStep = () => {
-      if (!mountedRef.current || step >= totalSteps) {
-        if (mountedRef.current) setState('done');
-        return;
-      }
-
-      setActiveStep(step);
-
-      // Use ALL benchmarks for consistent scale from frame 1
-      const allValues = benchmarks.flatMap((b) => [
-        Math.log10(Math.max(b.classicalMs, 0.001)),
-        Math.log10(Math.max(b.quantumMs, 0.001)),
-      ]);
-      const maxLog = Math.max(...allValues);
-      const minLog = Math.min(...allValues);
-      const range = maxLog - minLog || 1;
-
-      const newWidths = benchmarks.slice(0, step + 1).flatMap((b) => {
-        const classicalLog = Math.log10(Math.max(b.classicalMs, 0.001));
-        const quantumLog = Math.log10(Math.max(b.quantumMs, 0.001));
-        return [
-          ((classicalLog - minLog) / range) * 85 + 15,
-          ((quantumLog - minLog) / range) * 85 + 15,
-        ];
-      });
-
-      setBarWidths(newWidths);
-
-      step++;
-      setTimeout(() => {
-        if (mountedRef.current) runStep();
-      }, 600);
-    };
-
-    setTimeout(runStep, 300);
-  }, [benchmarks]);
+    setActiveStep(0);
+  }, []);
 
   const reset = useCallback(() => {
     setState('idle');
     setActiveStep(-1);
-    setBarWidths([]);
   }, []);
 
   const visibleBenchmarks = benchmarks.slice(0, activeStep + 1);
@@ -149,7 +136,7 @@ export function BenchmarkChart({ benchmarks, templateId, templateTitle }: Benchm
 
         {state !== 'idle' && (
           <span className="text-xs text-[var(--text-muted)]">
-            {activeStep + 1} / {benchmarks.length} tamanhos de entrada
+            {Math.min(activeStep + 1, benchmarks.length)} / {benchmarks.length} tamanhos de entrada
           </span>
         )}
       </div>

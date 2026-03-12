@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import type { BenchmarkPoint } from '@/lib/templates';
+import { createPortal } from 'react-dom';
 
 interface ScaleModalProps {
   point: BenchmarkPoint;
@@ -11,6 +12,8 @@ interface ScaleModalProps {
 
 const MAX_SCROLL_PX = 80_000;
 const QUANTUM_BAR_PX = 4;
+const BAR_HEIGHT = 40;
+const BAR_LEFT = 100;
 
 function formatTime(ms: number): string {
   if (ms < 1) return `${(ms * 1000).toFixed(0)}μs`;
@@ -47,6 +50,7 @@ interface Milestone {
   label: string;
   sublabel: string;
   icon: string;
+  isQuantum?: boolean;
 }
 
 function generateMilestones(
@@ -59,9 +63,10 @@ function generateMilestones(
   if (quantumFraction < 0.8) {
     milestones.push({
       position: quantumFraction,
-      label: 'O quântico terminou aqui',
+      label: 'Quântico terminou aqui',
       sublabel: formatTime(quantumMs),
       icon: '⚡',
+      isQuantum: true,
     });
   }
 
@@ -85,7 +90,7 @@ function generateMilestones(
       milestones.push({
         position: fraction,
         label: marker.label,
-        sublabel: `${(fraction * 100).toFixed(fraction < 0.1 ? 2 : 1)}% do tempo clássico`,
+        sublabel: `${(fraction * 100).toFixed(fraction < 0.1 ? 2 : 1)}%`,
         icon: marker.icon,
       });
     }
@@ -100,9 +105,9 @@ function generateMilestones(
 
   milestones.sort((a, b) => a.position - b.position);
   const filtered: Milestone[] = [];
-  let lastPos = -0.05;
+  let lastPos = -0.08;
   for (const m of milestones) {
-    if (m.position - lastPos > 0.03) {
+    if (m.position - lastPos > 0.06) {
       filtered.push(m);
       lastPos = m.position;
     }
@@ -111,7 +116,56 @@ function generateMilestones(
   return filtered;
 }
 
-export function ScaleModal({ point, templateTitle, onClose }: ScaleModalProps) {
+function generateTicks(classicalBarPx: number, classicalMs: number) {
+  // Smart ticks: use significant time boundaries
+  const significantTimes = [
+    1000, 5000, 10_000, 30_000, 60_000, 300_000, 600_000,
+    3_600_000, 7_200_000, 14_400_000, 28_800_000,
+    86_400_000, 172_800_000, 345_600_000, 604_800_000,
+    2_592_000_000, 7_776_000_000, 15_552_000_000,
+    31_536_000_000,
+  ];
+
+  const ticks: Array<{ x: number; label: string }> = [];
+  for (const t of significantTimes) {
+    const fraction = t / classicalMs;
+    if (fraction > 0.02 && fraction < 0.98) {
+      const x = fraction * classicalBarPx;
+      ticks.push({ x, label: formatTime(t) });
+    }
+  }
+
+  // Only add evenly-spaced fallback if very few significant ticks, and limit to 6
+  if (ticks.length < 3) {
+    const count = Math.min(Math.floor(classicalBarPx / 2000), 6);
+    for (let i = 1; i <= count; i++) {
+      const fraction = i / (count + 1);
+      const x = fraction * classicalBarPx;
+      const timeAtPoint = classicalMs * fraction;
+      const tooClose = ticks.some((t) => Math.abs(t.x - x) < 600);
+      if (!tooClose) {
+        ticks.push({ x, label: formatTime(timeAtPoint) });
+      }
+    }
+  }
+
+  ticks.sort((a, b) => a.x - b.x);
+
+  // Filter overlapping ticks — minimum spacing scales with bar size
+  const minSpacing = Math.max(400, classicalBarPx / 12);
+  const filtered: typeof ticks = [];
+  let lastX = -minSpacing;
+  for (const t of ticks) {
+    if (t.x - lastX > minSpacing) {
+      filtered.push(t);
+      lastX = t.x;
+    }
+  }
+
+  return filtered;
+}
+
+function ScaleModalContent({ point, templateTitle, onClose }: ScaleModalProps) {
   const [scrollProgress, setScrollProgress] = useState(0);
   const [isVisible, setIsVisible] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -121,19 +175,19 @@ export function ScaleModal({ point, templateTitle, onClose }: ScaleModalProps) {
   const isCapped = realClassicalPx > MAX_SCROLL_PX;
   const classicalBarPx = Math.min(realClassicalPx, MAX_SCROLL_PX);
   const milestones = generateMilestones(point.classicalMs, point.quantumMs);
+  const ticks = generateTicks(classicalBarPx, point.classicalMs);
 
-  // Entrance animation
   useEffect(() => {
     document.body.style.overflow = 'hidden';
-    requestAnimationFrame(() => {
+    const raf = requestAnimationFrame(() => {
       requestAnimationFrame(() => setIsVisible(true));
     });
     return () => {
       document.body.style.overflow = '';
+      cancelAnimationFrame(raf);
     };
   }, []);
 
-  // Track scroll progress (horizontal)
   const handleScroll = useCallback(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -143,7 +197,6 @@ export function ScaleModal({ point, templateTitle, onClose }: ScaleModalProps) {
     }
   }, []);
 
-  // Close on Escape
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -152,15 +205,13 @@ export function ScaleModal({ point, templateTitle, onClose }: ScaleModalProps) {
     return () => window.removeEventListener('keydown', handleKey);
   }, [onClose]);
 
-  // Convert vertical scroll (mouse wheel) into horizontal scroll
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const handleWheel = (e: WheelEvent) => {
-      // Only hijack vertical scroll when there's horizontal room
       if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
         e.preventDefault();
-        el.scrollLeft += e.deltaY;
+        el.scrollLeft += e.deltaY * 2;
       }
     };
     el.addEventListener('wheel', handleWheel, { passive: false });
@@ -170,167 +221,251 @@ export function ScaleModal({ point, templateTitle, onClose }: ScaleModalProps) {
   const speedupText = ratio < 1000
     ? `${ratio.toFixed(0)}×`
     : ratio < 1e6
-    ? `${(ratio / 1e3).toFixed(1)}K×`
-    : ratio < 1e9
-    ? `${(ratio / 1e6).toFixed(1)}M×`
-    : ratio < 1e12
-    ? `${(ratio / 1e9).toFixed(1)}B×`
-    : `${(ratio / 1e12).toFixed(1)}T×`;
+      ? `${(ratio / 1e3).toFixed(1)}K×`
+      : ratio < 1e9
+        ? `${(ratio / 1e6).toFixed(1)}M×`
+        : ratio < 1e12
+          ? `${(ratio / 1e9).toFixed(1)}B×`
+          : `${(ratio / 1e12).toFixed(1)}T×`;
 
-  const tickSpacing = 300;
-  const tickCount = Math.min(Math.floor(classicalBarPx / tickSpacing), 60);
+  // Center of vertical area for bars
+  const barsY = 'calc(50% - 60px)';
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex flex-col"
       style={{
-        background: 'rgba(5, 5, 16, 0.97)',
+        position: 'fixed',
+        inset: 0,
+        zIndex: 99999,
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'rgba(5, 5, 16, 0.98)',
         opacity: isVisible ? 1 : 0,
         transition: 'opacity 0.3s ease-out',
       }}
     >
-      {/* Fixed header */}
+      {/* ─── Header ─── */}
       <div
-        className="flex-shrink-0 border-b border-[var(--border)] px-6 py-4"
-        style={{ background: 'rgba(5, 5, 16, 0.95)', backdropFilter: 'blur(12px)' }}
+        style={{
+          flexShrink: 0,
+          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          padding: '16px 24px',
+          background: 'rgba(5, 5, 16, 0.95)',
+          backdropFilter: 'blur(12px)',
+        }}
       >
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
+        <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <h2 className="text-lg font-semibold text-[var(--text)]">
-              Escala real — {templateTitle}
+            <h2 style={{ fontSize: 18, fontWeight: 600, color: '#F0F0F5', margin: 0 }}>
+              📏 Escala real — {templateTitle}
             </h2>
-            <p className="text-xs text-[var(--text-muted)] mt-0.5">
-              Entrada: n = {point.label} • Role para a direita e sinta a diferença →
+            <p style={{ fontSize: 12, color: '#8B8FA3', margin: '4px 0 0' }}>
+              n = {point.label} · {formatTime(point.quantumMs)} (quântico) vs {formatTime(point.classicalMs)} (clássico) · Role para a direita →
             </p>
           </div>
-          <button
-            onClick={onClose}
-            className="w-9 h-9 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-white/5 transition-colors cursor-pointer"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            {/* Speedup badge */}
+            <div
+              style={{
+                background: 'rgba(124,58,237,0.12)',
+                border: '1px solid rgba(124,58,237,0.3)',
+                borderRadius: 20,
+                padding: '4px 14px',
+                fontSize: 13,
+                fontWeight: 700,
+                fontFamily: 'monospace',
+                color: '#a78bfa',
+              }}
+            >
+              ⚡ {speedupText} mais rápido
+            </div>
+            <button
+              onClick={onClose}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 8,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#8B8FA3',
+                background: 'transparent',
+                border: '1px solid rgba(255,255,255,0.08)',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Horizontal scrollable area */}
+      {/* ─── Scrollable area ─── */}
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-x-auto overflow-y-hidden"
-        style={{ cursor: 'grab' }}
+        style={{
+          flex: 1,
+          overflowX: 'auto',
+          overflowY: 'hidden',
+          cursor: 'grab',
+          position: 'relative',
+        }}
       >
         <div
-          className="relative h-full"
-          style={{ width: `${classicalBarPx + 600}px`, minWidth: '100%' }}
+          style={{
+            position: 'relative',
+            width: classicalBarPx + 600,
+            minWidth: '100%',
+            height: '100%',
+          }}
         >
-          {/* Quantum bar — tiny, at the start */}
-          <div className="absolute left-[40px] top-[40px] flex items-center gap-3">
-            <span className="text-xs font-mono text-[var(--text-muted)] w-16 flex-shrink-0 text-right">
-              Quântico
+          {/* ─── Quantum row ─── */}
+          <div
+            style={{
+              position: 'absolute',
+              left: BAR_LEFT,
+              top: barsY,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              transform: 'translateY(-30px)',
+            }}
+          >
+            <span style={{ fontSize: 11, fontFamily: 'monospace', color: '#a78bfa', fontWeight: 600, width: 0, marginLeft: -BAR_LEFT, paddingLeft: 16, whiteSpace: 'nowrap' }}>
+              ⚡ Quântico
             </span>
             <div
-              className="rounded-full flex-shrink-0"
               style={{
-                width: `${QUANTUM_BAR_PX}px`,
-                height: '32px',
-                background: 'var(--quantum)',
-                boxShadow: '0 0 12px var(--quantum-glow)',
+                width: QUANTUM_BAR_PX,
+                height: BAR_HEIGHT,
+                borderRadius: 4,
+                background: 'linear-gradient(180deg, #a78bfa 0%, #7c3aed 100%)',
+                boxShadow: '0 0 16px rgba(124,58,237,0.5), 0 0 4px rgba(124,58,237,0.8)',
+                flexShrink: 0,
+                marginLeft: BAR_LEFT - 8 - QUANTUM_BAR_PX,
               }}
             />
-            <span className="text-sm font-mono font-bold" style={{ color: 'var(--quantum)' }}>
+            <span style={{ fontSize: 13, fontFamily: 'monospace', fontWeight: 700, color: '#a78bfa' }}>
               {formatTime(point.quantumMs)}
             </span>
-            <span className="text-[10px] text-[var(--text-muted)]">
+            <span style={{ fontSize: 10, color: '#6B7280', fontFamily: 'monospace' }}>
               ({QUANTUM_BAR_PX}px)
             </span>
           </div>
 
-          {/* Classical bar — extends far to the right */}
-          <div className="absolute left-[110px] top-[100px] flex items-center">
-            <span className="text-xs font-mono text-[var(--text-muted)] w-16 flex-shrink-0 text-right mr-3 -ml-[86px]">
-              Clássico
+          {/* ─── Classical row ─── */}
+          <div
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: barsY,
+              display: 'flex',
+              alignItems: 'center',
+              transform: 'translateY(30px)',
+            }}
+          >
+            <span style={{ fontSize: 11, fontFamily: 'monospace', color: '#22d3ee', fontWeight: 600, width: BAR_LEFT, paddingLeft: 16, flexShrink: 0, whiteSpace: 'nowrap' }}>
+              🐌 Clássico
             </span>
             <div
-              className="rounded-r-lg flex-shrink-0"
               style={{
-                width: `${classicalBarPx}px`,
-                height: '32px',
-                background: 'linear-gradient(90deg, var(--classical) 0%, rgba(6, 182, 212, 0.3) 100%)',
-                boxShadow: '0 0 20px var(--classical-glow)',
+                width: classicalBarPx,
+                height: BAR_HEIGHT,
+                borderRadius: '0 8px 8px 0',
+                background: 'linear-gradient(90deg, #06b6d4 0%, #0891b2 30%, rgba(6,182,212,0.15) 100%)',
+                boxShadow: '0 0 24px rgba(6,182,212,0.2)',
+                flexShrink: 0,
+                position: 'relative',
               }}
-            />
+            >
+              {/* Subtle pattern inside the bar */}
+              <div style={{
+                position: 'absolute',
+                inset: 0,
+                borderRadius: '0 8px 8px 0',
+                background: 'repeating-linear-gradient(90deg, transparent 0px, transparent 98px, rgba(255,255,255,0.03) 98px, rgba(255,255,255,0.03) 100px)',
+              }} />
+            </div>
           </div>
 
-          {/* Scale ticks below the bar */}
-          {Array.from({ length: tickCount }, (_, i) => {
-            const x = (i + 1) * tickSpacing;
-            const fraction = x / classicalBarPx;
-            const timeAtPoint = point.classicalMs * fraction;
-            return (
-              <div
-                key={`tick-${i}`}
-                className="absolute flex flex-col items-center"
-                style={{ left: `${110 + x}px`, top: '140px' }}
-              >
-                <div
-                  className="h-2 w-px"
-                  style={{ background: 'rgba(255,255,255,0.1)' }}
-                />
-                <span className="text-[9px] font-mono text-[var(--text-muted)] opacity-50 mt-1 whitespace-nowrap">
-                  {formatTime(timeAtPoint)}
-                </span>
-              </div>
-            );
-          })}
+          {/* ─── Ticks below classical bar ─── */}
+          {ticks.map((tick, i) => (
+            <div
+              key={`tick-${i}`}
+              style={{
+                position: 'absolute',
+                left: BAR_LEFT + tick.x,
+                top: barsY,
+                transform: 'translateY(calc(30px + 48px))',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+              }}
+            >
+              <div style={{ width: 1, height: 12, background: 'rgba(255,255,255,0.08)' }} />
+              <span style={{ fontSize: 9, fontFamily: 'monospace', color: '#4B5563', marginTop: 4, whiteSpace: 'nowrap' }}>
+                {tick.label}
+              </span>
+            </div>
+          ))}
 
-          {/* Milestones — positioned along the bar */}
+          {/* ─── Milestones ─── */}
           {milestones.map((m, idx) => {
             const x = m.position * classicalBarPx;
-            if (x < 30 || x > classicalBarPx - 30) return null;
+            if (x < 40 || x > classicalBarPx - 40) return null;
 
-            const isQuantum = m.icon === '⚡';
-            // Alternate milestones above/below to avoid overlap
+            // Alternate above/below the bars
             const isAbove = idx % 2 === 0;
+            const verticalOffset = isAbove ? '-110px' : '120px';
 
             return (
               <div
-                key={`milestone-${idx}`}
-                className="absolute flex flex-col items-center"
+                key={`ms-${idx}`}
                 style={{
-                  left: `${110 + x}px`,
-                  top: isAbove ? '170px' : '170px',
-                  transform: 'translateX(-50%)',
+                  position: 'absolute',
+                  left: BAR_LEFT + x,
+                  top: barsY,
+                  transform: `translate(-50%, ${verticalOffset})`,
                 }}
               >
                 {/* Connector line */}
                 <div
-                  className="w-px h-4 flex-shrink-0"
-                  style={{ background: isQuantum ? 'var(--quantum)' : 'rgba(255,255,255,0.15)' }}
-                />
-                {/* Milestone card */}
-                <div
-                  className="rounded-lg px-3 py-2 border whitespace-nowrap mt-1"
                   style={{
-                    background: isQuantum
-                      ? 'rgba(124, 58, 237, 0.1)'
-                      : 'rgba(255, 255, 255, 0.03)',
-                    borderColor: isQuantum
-                      ? 'rgba(124, 58, 237, 0.3)'
-                      : 'var(--border)',
+                    position: 'absolute',
+                    left: '50%',
+                    width: 1,
+                    background: m.isQuantum
+                      ? 'rgba(124,58,237,0.4)'
+                      : 'rgba(255,255,255,0.06)',
+                    ...(isAbove
+                      ? { bottom: 0, height: 40 }
+                      : { top: -40, height: 40 }),
+                  }}
+                />
+                {/* Card */}
+                <div
+                  style={{
+                    background: m.isQuantum
+                      ? 'rgba(124,58,237,0.08)'
+                      : 'rgba(255,255,255,0.03)',
+                    border: `1px solid ${m.isQuantum ? 'rgba(124,58,237,0.25)' : 'rgba(255,255,255,0.06)'}`,
+                    borderRadius: 10,
+                    padding: '8px 14px',
+                    whiteSpace: 'nowrap',
+                    backdropFilter: 'blur(8px)',
                   }}
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm">{m.icon}</span>
-                    <span
-                      className="text-xs font-semibold"
-                      style={{ color: isQuantum ? 'var(--quantum)' : 'var(--text)' }}
-                    >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 14 }}>{m.icon}</span>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: m.isQuantum ? '#a78bfa' : '#F0F0F5' }}>
                       {m.label}
                     </span>
                   </div>
-                  <p className="text-[10px] text-[var(--text-muted)] mt-0.5 ml-6">
+                  <p style={{ fontSize: 10, color: '#6B7280', margin: '2px 0 0 22px' }}>
                     {m.sublabel}
                   </p>
                 </div>
@@ -338,53 +473,77 @@ export function ScaleModal({ point, templateTitle, onClose }: ScaleModalProps) {
             );
           })}
 
-          {/* End of classical bar */}
+          {/* ─── End marker ─── */}
           <div
-            className="absolute flex flex-col items-center"
-            style={{ left: `${110 + classicalBarPx}px`, top: '84px' }}
+            style={{
+              position: 'absolute',
+              left: BAR_LEFT + classicalBarPx,
+              top: barsY,
+              transform: 'translateY(-10px)',
+            }}
           >
             <div
-              className="h-[64px] w-1 rounded-full"
-              style={{ background: 'var(--classical)' }}
+              style={{
+                width: 3,
+                height: BAR_HEIGHT + 20,
+                borderRadius: 2,
+                background: 'linear-gradient(180deg, #22d3ee, #06b6d4)',
+                boxShadow: '0 0 12px rgba(6,182,212,0.4)',
+              }}
             />
-            <div className="mt-2 text-center">
-              <p className="text-sm font-semibold whitespace-nowrap" style={{ color: 'var(--classical)' }}>
-                🏁 Fim — {formatTime(point.classicalMs)}
+            <div style={{ textAlign: 'center', marginTop: 8, marginLeft: -60 }}>
+              <p style={{ fontSize: 14, fontWeight: 700, color: '#22d3ee', whiteSpace: 'nowrap', margin: 0 }}>
+                🏁 {formatTime(point.classicalMs)}
+              </p>
+              <p style={{ fontSize: 10, color: '#6B7280', margin: '2px 0 0', whiteSpace: 'nowrap' }}>
+                Fim do tempo clássico
               </p>
             </div>
           </div>
 
-          {/* If capped, show how much more it would be */}
+          {/* ─── Overflow card ─── */}
           {isCapped && (
             <div
-              className="absolute"
-              style={{ left: `${110 + classicalBarPx + 40}px`, top: '60px' }}
+              style={{
+                position: 'absolute',
+                left: BAR_LEFT + classicalBarPx + 50,
+                top: barsY,
+                transform: 'translateY(-40px)',
+              }}
             >
               <div
-                className="rounded-xl border p-5 max-w-sm"
                 style={{
-                  background: 'rgba(245, 158, 11, 0.05)',
-                  borderColor: 'rgba(245, 158, 11, 0.2)',
+                  background: 'rgba(245,158,11,0.06)',
+                  border: '1px solid rgba(245,158,11,0.2)',
+                  borderRadius: 14,
+                  padding: '20px 24px',
+                  maxWidth: 360,
+                  backdropFilter: 'blur(8px)',
                 }}
               >
-                <p className="text-sm font-semibold" style={{ color: 'var(--accent)' }}>
-                  ⚠️ Na escala real, esta barra continuaria por mais {formatDistance(realClassicalPx - MAX_SCROLL_PX)}
+                <p style={{ fontSize: 14, fontWeight: 700, color: '#fbbf24', margin: 0 }}>
+                  ⚠️ Na escala real, a barra continuaria por mais {formatDistance(realClassicalPx - MAX_SCROLL_PX)}
                 </p>
-                <p className="text-xs text-[var(--text-muted)] mt-2">
-                  A barra quântica tem {QUANTUM_BAR_PX}px. A clássica teria{' '}
-                  <span className="font-mono font-bold text-[var(--text)]">
-                    {realClassicalPx > 1_000_000
-                      ? formatDistance(realClassicalPx)
-                      : `${Math.round(realClassicalPx).toLocaleString('pt-BR')}px`}
-                  </span>
-                  {' '}— isso é {formatDistance(realClassicalPx)} de tela.
-                </p>
-                <p className="text-xs text-[var(--text-muted)] mt-1">
-                  Você rolou {formatDistance(MAX_SCROLL_PX)}, que representa apenas{' '}
-                  <span className="font-mono font-bold" style={{ color: 'var(--accent)' }}>
-                    {((MAX_SCROLL_PX / realClassicalPx) * 100).toFixed(4)}%
-                  </span>{' '}
-                  do total.
+                <div style={{ margin: '12px 0', padding: '10px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 11, color: '#6B7280' }}>Barra quântica</span>
+                    <span style={{ fontSize: 13, fontFamily: 'monospace', fontWeight: 700, color: '#a78bfa' }}>{QUANTUM_BAR_PX}px</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+                    <span style={{ fontSize: 11, color: '#6B7280' }}>Barra clássica (real)</span>
+                    <span style={{ fontSize: 13, fontFamily: 'monospace', fontWeight: 700, color: '#22d3ee' }}>
+                      {realClassicalPx > 1_000_000 ? formatDistance(realClassicalPx) : `${Math.round(realClassicalPx).toLocaleString('pt-BR')}px`}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+                    <span style={{ fontSize: 11, color: '#6B7280' }}>Você viu</span>
+                    <span style={{ fontSize: 13, fontFamily: 'monospace', fontWeight: 700, color: '#fbbf24' }}>
+                      {((MAX_SCROLL_PX / realClassicalPx) * 100).toFixed(4)}%
+                    </span>
+                  </div>
+                </div>
+                <p style={{ fontSize: 11, color: '#6B7280', margin: 0 }}>
+                  Isso seria {formatDistance(realClassicalPx)} de tela física.
                 </p>
               </div>
             </div>
@@ -392,38 +551,60 @@ export function ScaleModal({ point, templateTitle, onClose }: ScaleModalProps) {
         </div>
       </div>
 
-      {/* Fixed bottom bar — progress + stats */}
+      {/* ─── Footer with progress ─── */}
       <div
-        className="flex-shrink-0 border-t border-[var(--border)] px-6 py-3"
-        style={{ background: 'rgba(5, 5, 16, 0.95)', backdropFilter: 'blur(12px)' }}
+        style={{
+          flexShrink: 0,
+          borderTop: '1px solid rgba(255,255,255,0.08)',
+          padding: '12px 24px',
+          background: 'rgba(5, 5, 16, 0.95)',
+          backdropFilter: 'blur(12px)',
+        }}
       >
-        <div className="max-w-5xl mx-auto">
+        <div style={{ maxWidth: 1200, margin: '0 auto' }}>
           {/* Progress bar */}
-          <div className="w-full h-1 rounded-full bg-white/5 mb-2 overflow-hidden">
+          <div style={{ width: '100%', height: 3, borderRadius: 2, background: 'rgba(255,255,255,0.04)', marginBottom: 8, overflow: 'hidden' }}>
             <div
-              className="h-full rounded-full transition-all duration-150"
               style={{
+                height: '100%',
+                borderRadius: 2,
                 width: `${scrollProgress * 100}%`,
-                background: 'linear-gradient(90deg, var(--quantum), var(--classical))',
+                background: 'linear-gradient(90deg, #7c3aed, #06b6d4)',
+                transition: 'width 0.1s',
+                boxShadow: '0 0 8px rgba(124,58,237,0.3)',
               }}
             />
           </div>
-          <div className="flex items-center justify-between text-[10px] text-[var(--text-muted)]">
-            <span>
-              Scroll: {Math.round(scrollProgress * 100)}%
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11 }}>
+            <span style={{ color: '#6B7280', fontFamily: 'monospace' }}>
+              📍 {Math.round(scrollProgress * 100)}% rolado
             </span>
-            <span className="font-mono">
-              Diferença:{' '}
-              <span className="font-bold" style={{ color: 'var(--quantum)' }}>
-                {speedupText} mais rápido
-              </span>
+            <span style={{ color: '#8B8FA3' }}>
+              {isCapped
+                ? `Mostrando ${((MAX_SCROLL_PX / realClassicalPx) * 100).toFixed(2)}% da escala real`
+                : 'Escala 1:1 — proporção exata entre quântico e clássico'}
             </span>
-            <span>
-              {isCapped ? `Mostrando ${((MAX_SCROLL_PX / realClassicalPx) * 100).toFixed(2)}% da escala real` : 'Escala 1:1'}
+            <span style={{ color: '#6B7280', fontFamily: 'monospace' }}>
+              Use scroll ou arraste →
             </span>
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+export function ScaleModal(props: ScaleModalProps) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) return null;
+
+  return createPortal(
+    <ScaleModalContent {...props} />,
+    document.body
   );
 }
