@@ -327,15 +327,14 @@ function ScaleModalContent({ point, templateTitle, onClose }: ScaleModalProps) {
           <div
             style={{
               position: 'absolute',
-              left: BAR_LEFT,
+              left: 0,
               top: barsY,
               display: 'flex',
               alignItems: 'center',
-              gap: 8,
               transform: 'translateY(-30px)',
             }}
           >
-            <span style={{ fontSize: 11, fontFamily: 'monospace', color: '#a78bfa', fontWeight: 600, width: 0, marginLeft: -BAR_LEFT, paddingLeft: 16, whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: 11, fontFamily: 'monospace', color: '#a78bfa', fontWeight: 600, width: BAR_LEFT, paddingLeft: 16, flexShrink: 0, whiteSpace: 'nowrap' }}>
               ⚡ Quântico
             </span>
             <div
@@ -346,13 +345,12 @@ function ScaleModalContent({ point, templateTitle, onClose }: ScaleModalProps) {
                 background: 'linear-gradient(180deg, #a78bfa 0%, #7c3aed 100%)',
                 boxShadow: '0 0 16px rgba(124,58,237,0.5), 0 0 4px rgba(124,58,237,0.8)',
                 flexShrink: 0,
-                marginLeft: BAR_LEFT - 8 - QUANTUM_BAR_PX,
               }}
             />
-            <span style={{ fontSize: 13, fontFamily: 'monospace', fontWeight: 700, color: '#a78bfa' }}>
+            <span style={{ fontSize: 13, fontFamily: 'monospace', fontWeight: 700, color: '#a78bfa', marginLeft: 8 }}>
               {formatTime(point.quantumMs)}
             </span>
-            <span style={{ fontSize: 10, color: '#6B7280', fontFamily: 'monospace' }}>
+            <span style={{ fontSize: 10, color: '#6B7280', fontFamily: 'monospace', marginLeft: 4 }}>
               ({QUANTUM_BAR_PX}px)
             </span>
           </div>
@@ -491,7 +489,7 @@ function ScaleModalContent({ point, templateTitle, onClose }: ScaleModalProps) {
                 boxShadow: '0 0 12px rgba(6,182,212,0.4)',
               }}
             />
-            <div style={{ textAlign: 'center', marginTop: 8, marginLeft: -60 }}>
+            <div style={{ textAlign: 'center', marginTop: 8, transform: 'translateX(-50%)' }}>
               <p style={{ fontSize: 14, fontWeight: 700, color: '#22d3ee', whiteSpace: 'nowrap', margin: 0 }}>
                 🏁 {formatTime(point.classicalMs)}
               </p>
