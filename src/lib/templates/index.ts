@@ -18,7 +18,7 @@ export interface Template {
   explanation: string;
   inputDescription: string;
   tags: string[];
-  benchmarks: BenchmarkPoint[];
+  benchmarks?: BenchmarkPoint[];
 }
 
 export const TEMPLATES: Template[] = [
@@ -857,13 +857,5 @@ if __name__ == "__main__":
     inputDescription:
       "Quantidade de bits/bytes aleatórios a gerar e opcionalmente um range (ex: inteiro entre 1 e 100).",
     tags: ["random", "entropy", "basics"],
-    benchmarks: [
-      { label: "8 bits", classicalMs: 0.001, quantumMs: 0.5 },
-      { label: "64 bits", classicalMs: 0.002, quantumMs: 2 },
-      { label: "256 bits", classicalMs: 0.005, quantumMs: 6 },
-      { label: "1024 bits", classicalMs: 0.01, quantumMs: 20 },
-      { label: "4096 bits", classicalMs: 0.02, quantumMs: 75 },
-      { label: "∞ (entropia)", classicalMs: 0.03, quantumMs: 0.03 },
-    ],
   },
 ];

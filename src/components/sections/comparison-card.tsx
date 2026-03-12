@@ -130,13 +130,15 @@ export function ComparisonCard({ template }: ComparisonCardProps) {
       )}
 
       {/* Benchmark Simulation */}
-      <div className="px-6 pt-4">
-        <BenchmarkChart
-          benchmarks={template.benchmarks}
-          templateId={template.id}
-          templateTitle={template.title}
-        />
-      </div>
+      {template.benchmarks && template.benchmarks.length > 0 && (
+        <div className="px-6 pt-4">
+          <BenchmarkChart
+            benchmarks={template.benchmarks}
+            templateId={template.id}
+            templateTitle={template.title}
+          />
+        </div>
+      )}
 
       {/* Explanation */}
       <div className="px-6 pt-4">
