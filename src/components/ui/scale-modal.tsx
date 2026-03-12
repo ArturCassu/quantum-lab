@@ -376,8 +376,8 @@ function ScaleModalContent({ point, templateTitle, onClose }: ScaleModalProps) {
                 width: classicalBarPx,
                 height: BAR_HEIGHT,
                 borderRadius: '0 8px 8px 0',
-                background: 'linear-gradient(90deg, #06b6d4 0%, #0891b2 30%, rgba(6,182,212,0.15) 100%)',
-                boxShadow: '0 0 24px rgba(6,182,212,0.2)',
+                background: 'linear-gradient(90deg, #06b6d4 0%, #0891b2 30%, rgba(6,182,212,0.5) 100%)',
+                boxShadow: '0 0 24px rgba(6,182,212,0.3)',
                 flexShrink: 0,
                 position: 'relative',
               }}
@@ -387,7 +387,7 @@ function ScaleModalContent({ point, templateTitle, onClose }: ScaleModalProps) {
                 position: 'absolute',
                 inset: 0,
                 borderRadius: '0 8px 8px 0',
-                background: 'repeating-linear-gradient(90deg, transparent 0px, transparent 98px, rgba(255,255,255,0.03) 98px, rgba(255,255,255,0.03) 100px)',
+                background: 'repeating-linear-gradient(90deg, transparent 0px, transparent 98px, rgba(255,255,255,0.06) 98px, rgba(255,255,255,0.06) 100px)',
               }} />
             </div>
           </div>
